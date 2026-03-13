@@ -41,7 +41,7 @@ export interface SubscriptionProcedure<
 > {
   readonly _type: "subscription";
   readonly _inputSchema: TInput;
-  readonly _outputSchema: z.ZodType;
+  readonly _outputSchema: z.ZodType<TOutput>;
   readonly _outputType: TOutput;
   readonly handler: SubscriptionHandler<z.infer<TInput>, TOutput>;
   /** Per-procedure middleware chain (runs after global middleware) */

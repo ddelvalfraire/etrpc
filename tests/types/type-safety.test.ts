@@ -97,6 +97,13 @@ const _tickOutput: TickOutput = { count: 1, timestamp: 123 };
 // @ts-expect-error - missing timestamp
 const _tickOutputBad: TickOutput = { count: 1 };
 
+// Subscription _outputSchema preserves output type (not bare z.ZodType)
+type TickSchema = TestRouter["onTick"]["_outputSchema"];
+declare const _tickSchema: TickSchema;
+const _parsedTick: { count: number; timestamp: number } = _tickSchema.parse({});
+// @ts-expect-error - _outputSchema.parse returns typed output, not string
+const _parsedTickBad: string = _tickSchema.parse({});
+
 // =============================================================================
 // Client Type Tests
 // =============================================================================

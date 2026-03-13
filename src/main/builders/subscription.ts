@@ -37,7 +37,7 @@ class SubscriptionBuilderFinal<
     return {
       _type: "subscription",
       _inputSchema: finalInput,
-      _outputSchema: this.outputSchema,
+      _outputSchema: this.outputSchema as z.ZodType<z.infer<TOutputSchema>>,
       _outputType: undefined as unknown as z.infer<TOutputSchema>,
       handler: fn as unknown as SubscriptionHandler<
         z.infer<TInput extends z.ZodType ? TInput : z.ZodVoid>,
