@@ -1303,8 +1303,8 @@ describe("createServer", () => {
         input: undefined,
       } satisfies SubscribePayload);
 
-      // Give the handler a tick to start
-      await new Promise((r) => setTimeout(r, 5));
+      // Yield to let the handler start (subscribe triggers synchronously, handler promise executor runs inline)
+      await Promise.resolve();
 
       // Unsubscribe while handler is still pending
       raceMock.ipcRenderer.send(IPC_CHANNELS.UNSUBSCRIBE, {
@@ -1316,8 +1316,9 @@ describe("createServer", () => {
       expect(resolveHandler).toBeDefined();
       resolveHandler!();
 
-      // Let the .then() callback run
-      await new Promise((r) => setTimeout(r, 10));
+      // Flush the microtask queue so .then() callback runs
+      await Promise.resolve();
+      await Promise.resolve();
 
       // Cleanup should have been called even though unsubscribe came before resolve
       expect(cleanupCalled.value).toBe(true);
@@ -1354,7 +1355,7 @@ describe("createServer", () => {
         input: undefined,
       } satisfies SubscribePayload);
 
-      await new Promise((r) => setTimeout(r, 5));
+      await Promise.resolve();
 
       // Unsubscribe while pending
       raceMock.ipcRenderer.send(IPC_CHANNELS.UNSUBSCRIBE, {
@@ -1362,15 +1363,16 @@ describe("createServer", () => {
         id: "race-sub-2",
       } satisfies UnsubscribePayload);
 
-      // Resolve the handler
+      // Resolve the handler and flush microtask queue
       resolveHandler!();
-      await new Promise((r) => setTimeout(r, 10));
+      await Promise.resolve();
+      await Promise.resolve();
 
       // Emitting via server emitters should NOT reach this subscription
       // because it was cancelled before being registered
       raceServer.emitters.slowSub({ n: 999 });
 
-      await new Promise((r) => setTimeout(r, 10));
+      await Promise.resolve();
       expect(data).toEqual([]);
 
       raceServer.cleanup();
@@ -1408,12 +1410,51 @@ describe("createServer", () => {
         input: undefined,
       } satisfies SubscribePayload);
 
-      await new Promise((r) => setTimeout(r, 20));
+      await Promise.resolve();
+      await Promise.resolve();
 
       expect(errors.length).toBe(1);
       expect(errors[0]).toMatchObject({
         code: RpcErrorCode.HANDLER_ERROR,
         message: "unexpected type error",
+      });
+
+      errServer.cleanup();
+    });
+
+    it("RpcError thrown from subscription handler preserves original error code", async () => {
+      const errMock = createMockElectron();
+      const errors: unknown[] = [];
+
+      const router = {
+        authSub: subscription()
+          .output(z.string())
+          .handler(() => {
+            throw new RpcError(RpcErrorCode.UNAUTHORIZED, "not allowed");
+          }),
+      };
+
+      const errServer = createServer(router, { ipcMain: errMock.ipcMain });
+
+      errMock.ipcRenderer.on(IPC_CHANNELS.SUBSCRIPTION_MESSAGE, (_event: unknown, msg: unknown) => {
+        const message = msg as { type: string; error?: unknown };
+        if (message.type === "error") errors.push(message.error);
+      });
+
+      errMock.ipcRenderer.send(IPC_CHANNELS.SUBSCRIBE, {
+        type: "subscribe",
+        id: "err-sub-auth",
+        path: "authSub",
+        input: undefined,
+      } satisfies SubscribePayload);
+
+      await Promise.resolve();
+      await Promise.resolve();
+
+      expect(errors.length).toBe(1);
+      expect(errors[0]).toMatchObject({
+        code: RpcErrorCode.UNAUTHORIZED,
+        message: "not allowed",
       });
 
       errServer.cleanup();
@@ -1446,7 +1487,8 @@ describe("createServer", () => {
         input: undefined,
       } satisfies SubscribePayload);
 
-      await new Promise((r) => setTimeout(r, 20));
+      await Promise.resolve();
+      await Promise.resolve();
 
       expect(errors.length).toBe(1);
       expect(errors[0]).toMatchObject({
