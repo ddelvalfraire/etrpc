@@ -24,6 +24,9 @@ import type {
   SubscriptionClient,
   ServerEmitters,
   IpcClient,
+  FlattenRouter,
+  RouterDef,
+  AnyProcedure,
 } from "#src/shared/types";
 
 // =============================================================================
@@ -274,3 +277,113 @@ const _middlewareArray: ReadonlyArray<Middleware> = [
   _definedMw,
   _asMw,
 ];
+
+// =============================================================================
+// FlattenRouter Tests
+// =============================================================================
+
+// Helper: assert two types are identical
+type AssertEqual<T, U> = [T] extends [U] ? ([U] extends [T] ? true : false) : false;
+type Assert<T extends true> = T;
+
+// --- 1. Simple nested router flattens correctly (dot-separated keys) ---
+
+const _nestedRouter = {
+  users: {
+    getById: query()
+      .input(z.object({ id: z.string() }))
+      .handler(({ id }) => ({ id, name: "Alice" })),
+    delete: mutation()
+      .input(z.object({ id: z.string() }))
+      .handler(({ id }) => ({ deleted: true })),
+  },
+};
+
+type FlatNested = FlattenRouter<typeof _nestedRouter>;
+
+// The flattened type has the expected dot-separated keys
+type _AssertGetById = Assert<AssertEqual<
+  FlatNested["users.getById"],
+  (typeof _nestedRouter)["users"]["getById"]
+>>;
+type _AssertDelete = Assert<AssertEqual<
+  FlatNested["users.delete"],
+  (typeof _nestedRouter)["users"]["delete"]
+>>;
+
+// Both keys exist simultaneously (not a union of single-key records)
+declare const _flatNested: FlatNested;
+const _gnb = _flatNested["users.getById"];
+const _gnd = _flatNested["users.delete"];
+
+// --- 2. Deeply nested router (3+ levels) flattens correctly ---
+
+const _deepRouter = {
+  api: {
+    v1: {
+      users: {
+        list: query().handler(() => [{ id: "1" }]),
+      },
+    },
+  },
+};
+
+type FlatDeep = FlattenRouter<typeof _deepRouter>;
+
+type _AssertDeepList = Assert<AssertEqual<
+  FlatDeep["api.v1.users.list"],
+  (typeof _deepRouter)["api"]["v1"]["users"]["list"]
+>>;
+
+declare const _flatDeep: FlatDeep;
+const _deepList = _flatDeep["api.v1.users.list"];
+
+// --- 3. Mixed flat + nested procedures work ---
+
+const _mixedRouter = {
+  health: query().handler(() => "ok" as const),
+  users: {
+    getById: query()
+      .input(z.object({ id: z.string() }))
+      .handler(({ id }) => ({ id, name: "Alice" })),
+  },
+  system: {
+    reboot: mutation().handler(() => ({ rebooting: true })),
+  },
+};
+
+type FlatMixed = FlattenRouter<typeof _mixedRouter>;
+
+// Flat procedure stays as-is (no prefix)
+type _AssertHealth = Assert<AssertEqual<
+  FlatMixed["health"],
+  (typeof _mixedRouter)["health"]
+>>;
+
+// Nested procedures get dot-separated keys
+type _AssertMixedGetById = Assert<AssertEqual<
+  FlatMixed["users.getById"],
+  (typeof _mixedRouter)["users"]["getById"]
+>>;
+type _AssertReboot = Assert<AssertEqual<
+  FlatMixed["system.reboot"],
+  (typeof _mixedRouter)["system"]["reboot"]
+>>;
+
+// All three keys coexist on a single type
+declare const _flatMixed: FlatMixed;
+const _fmh = _flatMixed["health"];
+const _fmu = _flatMixed["users.getById"];
+const _fms = _flatMixed["system.reboot"];
+
+// --- 4. The result satisfies RouterDef ---
+
+// RouterDef = Record<string, AnyProcedure>, so FlattenRouter output must be assignable
+type _AssertRouterDefSimple = Assert<FlatNested extends RouterDef ? true : false>;
+type _AssertRouterDefDeep = Assert<FlatDeep extends RouterDef ? true : false>;
+type _AssertRouterDefMixed = Assert<FlatMixed extends RouterDef ? true : false>;
+
+// Verify at value level too: assignable to a RouterDef-typed variable
+const _routerDefFromFlat: RouterDef = _flatMixed;
+const _routerDefFromNested: RouterDef = _flatNested;
+const _routerDefFromDeep: RouterDef = _flatDeep;

@@ -104,14 +104,35 @@ export type RouterDef = Record<string, AnyProcedure>;
 /** A nested router supports grouping procedures by domain. */
 export type NestedRouterDef = Record<string, AnyProcedure | RouterDef>;
 
-/** Flatten a nested router into dot-separated paths. */
-export type FlattenRouter<T extends NestedRouterDef, Prefix extends string = ""> = {
+/** Convert a union to an intersection via distributive conditional types. */
+type UnionToIntersection<U> = (
+  U extends unknown ? (x: U) => void : never
+) extends (x: infer I) => void
+  ? I
+  : never;
+
+/**
+ * Helper: produces a union of single-key records for every leaf procedure.
+ * Each member maps one dot-separated path to its procedure.
+ */
+type FlatEntries<T extends NestedRouterDef, Prefix extends string = ""> = {
   [K in keyof T & string]: T[K] extends AnyProcedure
-    ? { [P in `${Prefix}${K}`]: T[K] }
+    ? Record<`${Prefix}${K}`, T[K]>
     : T[K] extends RouterDef
-      ? FlattenRouter<T[K], `${Prefix}${K}.`>
+      ? FlatEntries<T[K], `${Prefix}${K}.`>
       : never;
 }[keyof T & string];
+
+/**
+ * Flatten a nested router into a single record with dot-separated keys.
+ * Uses `UnionToIntersection` to merge the per-key records into one flat type,
+ * then re-maps through a mapped type to produce a clean object.
+ */
+export type FlattenRouter<T extends NestedRouterDef, Prefix extends string = ""> = {
+  [K in keyof UnionToIntersection<FlatEntries<T, Prefix>>]: UnionToIntersection<
+    FlatEntries<T, Prefix>
+  >[K];
+};
 
 /** Extract the inferred input type from a procedure. */
 export type InferInput<T> = T extends { _inputSchema: infer U extends z.ZodType }
