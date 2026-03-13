@@ -17,6 +17,10 @@ class SubscriptionBuilderFinal<
     return new SubscriptionBuilderFinal(this.inputSchema, this.outputSchema, [...this.middlewares, mw], this.metadata);
   }
 
+  meta(meta: Record<string, unknown>): SubscriptionBuilderFinal<TInput, TOutputSchema> {
+    return new SubscriptionBuilderFinal(this.inputSchema, this.outputSchema, this.middlewares, meta);
+  }
+
   handler(
     fn: SubscriptionHandler<
       TInput extends z.ZodType ? z.infer<TInput> : void,
@@ -54,6 +58,10 @@ class SubscriptionBuilderWithInput<TInput extends z.ZodType> {
 
   use(mw: Middleware): SubscriptionBuilderWithInput<TInput> {
     return new SubscriptionBuilderWithInput(this.inputSchema, [...this.middlewares, mw], this.metadata);
+  }
+
+  meta(meta: Record<string, unknown>): SubscriptionBuilderWithInput<TInput> {
+    return new SubscriptionBuilderWithInput(this.inputSchema, this.middlewares, meta);
   }
 
   output<T extends z.ZodType>(schema: T): SubscriptionBuilderFinal<TInput, T> {

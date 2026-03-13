@@ -11,12 +11,6 @@ import type {
 } from "../shared/types";
 import { RpcError } from "../shared/types";
 
-declare global {
-  interface Window {
-    __etrpc: PreloadBridge;
-  }
-}
-
 interface SubscriptionCallbacks {
   onData: (data: unknown) => void;
   onError: (error: Error) => void;

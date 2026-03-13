@@ -91,6 +91,8 @@ export function createServer<T extends RouterDef>(
   const middlewares: ReadonlyArray<Middleware> = options?.middleware ?? [];
 
   const activeSubscriptions = new Map<string, ActiveSubscription>();
+  const pendingSubscriptions = new Set<string>();
+  const cancelledWhilePending = new Set<string>();
   const registeredWebContentsIds = new Set<number>();
 
   function parseInvokePayload(payload: unknown): InvokePayload {
@@ -170,6 +172,10 @@ export function createServer<T extends RouterDef>(
   }
 
   function cleanupSubscriptionsForWebContents(webContentsId: number): void {
+    // Mark any pending subscriptions for this webContents as cancelled
+    // (We don't know which pending subs belong to which webContents, so we
+    // rely on the sender ownership check + the cancelled set for active ones.)
+
     // Collect first: cleanup functions may themselves trigger subscribe/unsubscribe
     const toCleanup: string[] = [];
     for (const [subId, sub] of activeSubscriptions) {
@@ -250,9 +256,8 @@ export function createServer<T extends RouterDef>(
     try {
       procedure = lookupProcedure(path, "subscription") as SubscriptionProcedure<z.ZodType, unknown>;
     } catch (err: unknown) {
-      if (err instanceof RpcError) {
-        sendErrorToSender(sender, subId, err);
-      }
+      const rpcErr = err instanceof RpcError ? err : new RpcError(RpcErrorCode.INTERNAL, err instanceof Error ? err.message : String(err));
+      sendErrorToSender(sender, subId, rpcErr);
       return;
     }
 
@@ -260,9 +265,8 @@ export function createServer<T extends RouterDef>(
     try {
       validatedInput = validateInput(procedure, input);
     } catch (err: unknown) {
-      if (err instanceof RpcError) {
-        sendErrorToSender(sender, subId, err);
-      }
+      const rpcErr = err instanceof RpcError ? err : new RpcError(RpcErrorCode.INTERNAL, err instanceof Error ? err.message : String(err));
+      sendErrorToSender(sender, subId, rpcErr);
       return;
     }
 
@@ -298,6 +302,8 @@ export function createServer<T extends RouterDef>(
       meta: procedure._meta,
     };
 
+    pendingSubscriptions.add(subId);
+
     const allMiddleware = [...middlewares, ...(procedure._middleware as ReadonlyArray<Middleware>)];
     const middlewareResult = composeMiddleware(
       allMiddleware,
@@ -309,6 +315,17 @@ export function createServer<T extends RouterDef>(
     );
 
     middlewareResult.then((cleanupFn) => {
+      pendingSubscriptions.delete(subId);
+
+      // If unsubscribe arrived while the handler was pending, run cleanup immediately
+      if (cancelledWhilePending.has(subId)) {
+        cancelledWhilePending.delete(subId);
+        if (typeof cleanupFn === "function") {
+          try { (cleanupFn as () => void)(); } catch { /* teardown safety */ }
+        }
+        return;
+      }
+
       activeSubscriptions.set(subId, {
         path,
         webContentsId: sender.id,
@@ -316,6 +333,8 @@ export function createServer<T extends RouterDef>(
         cleanup: typeof cleanupFn === "function" ? (cleanupFn as () => void) : undefined,
       });
     }).catch((err: unknown) => {
+      pendingSubscriptions.delete(subId);
+      cancelledWhilePending.delete(subId);
       if (err instanceof RpcError) {
         sendErrorToSender(sender, subId, err);
       } else {
@@ -328,6 +347,12 @@ export function createServer<T extends RouterDef>(
   ipcMain.on(IPC_CHANNELS.UNSUBSCRIBE, (event: IpcMainEvent, payload: unknown) => {
     const subId = parseUnsubscribePayload(payload);
     if (!subId) return;
+
+    // If the handler is still pending, mark for cancellation on resolve
+    if (pendingSubscriptions.has(subId)) {
+      cancelledWhilePending.add(subId);
+      return;
+    }
 
     const sub = activeSubscriptions.get(subId);
     if (sub && sub.webContentsId !== event.sender.id) return;

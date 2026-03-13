@@ -77,7 +77,7 @@ export interface SubscriptionContext<TOutput> {
 
 /** Abstracted sender info, decoupled from Electron types for testability. */
 export interface SenderInfo {
-    readonly id: number;
+  readonly id: number;
 }
 
 /** Query handler function signature. */

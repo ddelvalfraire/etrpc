@@ -1,9 +1,11 @@
 export { createServer } from "./server";
+export type { CreateServerOptions } from "./server";
 export { query } from "./builders/query";
 export { mutation } from "./builders/mutation";
 export { subscription } from "./builders/subscription";
 export { createRouter } from "./router";
 
+export { RpcError, RpcErrorCode } from "../shared/types";
 export type {
   RouterDef,
   QueryProcedure,
@@ -15,8 +17,6 @@ export type {
   ServerResult,
   ServerEmitters,
   BroadcastEmitter,
-  RpcErrorCode,
-  RpcError,
 } from "../shared/types";
 
 export { defineMiddleware, withMiddleware } from "./middleware";
