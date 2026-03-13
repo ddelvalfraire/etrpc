@@ -1271,4 +1271,190 @@ describe("createServer", () => {
       destroyServer.cleanup();
     });
   });
+
+  // ===========================================================================
+  // Subscribe race condition: unsubscribe during pending async handler
+  // ===========================================================================
+
+  describe("subscribe race condition", () => {
+    it("unsubscribe during pending handler runs cleanup when handler resolves", async () => {
+      const raceMock = createMockElectron();
+      const cleanupCalled = { value: false };
+      let resolveHandler: (() => void) | undefined;
+
+      const router = {
+        slowSub: subscription()
+          .output(z.object({ n: z.number() }))
+          .handler((_, ctx) => {
+            // Return a promise that doesn't resolve until we say so
+            return new Promise<() => void>((resolve) => {
+              resolveHandler = () => resolve(() => { cleanupCalled.value = true; });
+            });
+          }),
+      };
+
+      const raceServer = createServer(router, { ipcMain: raceMock.ipcMain });
+
+      // Start subscribing (handler is now pending)
+      raceMock.ipcRenderer.send(IPC_CHANNELS.SUBSCRIBE, {
+        type: "subscribe",
+        id: "race-sub-1",
+        path: "slowSub",
+        input: undefined,
+      } satisfies SubscribePayload);
+
+      // Give the handler a tick to start
+      await new Promise((r) => setTimeout(r, 5));
+
+      // Unsubscribe while handler is still pending
+      raceMock.ipcRenderer.send(IPC_CHANNELS.UNSUBSCRIBE, {
+        type: "unsubscribe",
+        id: "race-sub-1",
+      } satisfies UnsubscribePayload);
+
+      // Now resolve the handler
+      expect(resolveHandler).toBeDefined();
+      resolveHandler!();
+
+      // Let the .then() callback run
+      await new Promise((r) => setTimeout(r, 10));
+
+      // Cleanup should have been called even though unsubscribe came before resolve
+      expect(cleanupCalled.value).toBe(true);
+
+      raceServer.cleanup();
+    });
+
+    it("unsubscribe during pending handler prevents subscription from being registered", async () => {
+      const raceMock = createMockElectron();
+      const data: unknown[] = [];
+      let resolveHandler: (() => void) | undefined;
+
+      const router = {
+        slowSub: subscription()
+          .output(z.object({ n: z.number() }))
+          .handler((_, ctx) => {
+            return new Promise<() => void>((resolve) => {
+              resolveHandler = () => resolve(() => {});
+            });
+          }),
+      };
+
+      const raceServer = createServer(router, { ipcMain: raceMock.ipcMain });
+
+      raceMock.ipcRenderer.on(IPC_CHANNELS.SUBSCRIPTION_MESSAGE, (_event: unknown, msg: unknown) => {
+        const message = msg as { type: string; data?: unknown };
+        if (message.type === "data") data.push(message.data);
+      });
+
+      raceMock.ipcRenderer.send(IPC_CHANNELS.SUBSCRIBE, {
+        type: "subscribe",
+        id: "race-sub-2",
+        path: "slowSub",
+        input: undefined,
+      } satisfies SubscribePayload);
+
+      await new Promise((r) => setTimeout(r, 5));
+
+      // Unsubscribe while pending
+      raceMock.ipcRenderer.send(IPC_CHANNELS.UNSUBSCRIBE, {
+        type: "unsubscribe",
+        id: "race-sub-2",
+      } satisfies UnsubscribePayload);
+
+      // Resolve the handler
+      resolveHandler!();
+      await new Promise((r) => setTimeout(r, 10));
+
+      // Emitting via server emitters should NOT reach this subscription
+      // because it was cancelled before being registered
+      raceServer.emitters.slowSub({ n: 999 });
+
+      await new Promise((r) => setTimeout(r, 10));
+      expect(data).toEqual([]);
+
+      raceServer.cleanup();
+    });
+  });
+
+  // ===========================================================================
+  // Error forwarding: non-RpcError exceptions in SUBSCRIBE catch blocks
+  // ===========================================================================
+
+  describe("subscribe error forwarding", () => {
+    it("non-RpcError thrown during subscription handler setup is forwarded to renderer", async () => {
+      const errMock = createMockElectron();
+      const errors: unknown[] = [];
+
+      const router = {
+        badSub: subscription()
+          .output(z.string())
+          .handler(() => {
+            throw new TypeError("unexpected type error");
+          }),
+      };
+
+      const errServer = createServer(router, { ipcMain: errMock.ipcMain });
+
+      errMock.ipcRenderer.on(IPC_CHANNELS.SUBSCRIPTION_MESSAGE, (_event: unknown, msg: unknown) => {
+        const message = msg as { type: string; error?: unknown };
+        if (message.type === "error") errors.push(message.error);
+      });
+
+      errMock.ipcRenderer.send(IPC_CHANNELS.SUBSCRIBE, {
+        type: "subscribe",
+        id: "err-sub-1",
+        path: "badSub",
+        input: undefined,
+      } satisfies SubscribePayload);
+
+      await new Promise((r) => setTimeout(r, 20));
+
+      expect(errors.length).toBe(1);
+      expect(errors[0]).toMatchObject({
+        code: RpcErrorCode.HANDLER_ERROR,
+        message: "unexpected type error",
+      });
+
+      errServer.cleanup();
+    });
+
+    it("non-RpcError from middleware during subscribe is forwarded to renderer", async () => {
+      const errMock = createMockElectron();
+      const errors: unknown[] = [];
+
+      const router = {
+        sub: subscription()
+          .output(z.string())
+          .handler(() => {}),
+      };
+
+      const errServer = createServer(router, {
+        ipcMain: errMock.ipcMain,
+        middleware: [async () => { throw new Error("middleware crashed"); }],
+      });
+
+      errMock.ipcRenderer.on(IPC_CHANNELS.SUBSCRIPTION_MESSAGE, (_event: unknown, msg: unknown) => {
+        const message = msg as { type: string; error?: unknown };
+        if (message.type === "error") errors.push(message.error);
+      });
+
+      errMock.ipcRenderer.send(IPC_CHANNELS.SUBSCRIBE, {
+        type: "subscribe",
+        id: "err-sub-2",
+        path: "sub",
+        input: undefined,
+      } satisfies SubscribePayload);
+
+      await new Promise((r) => setTimeout(r, 20));
+
+      expect(errors.length).toBe(1);
+      expect(errors[0]).toMatchObject({
+        code: RpcErrorCode.HANDLER_ERROR,
+        message: "middleware crashed",
+      });
+
+      errServer.cleanup();
+    });
+  });
 });
