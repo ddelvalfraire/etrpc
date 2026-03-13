@@ -328,14 +328,26 @@ describe("useMutation", () => {
   // -------------------------------------------------------------------------
 
   describe("void input", () => {
-    it("mutate() works when fn accepts void", async () => {
-      const fn = vi.fn().mockResolvedValue("pong");
-      const { result } = renderHook(() =>
-        useMutation(fn as () => Promise<string>),
-      );
+    it("mutate() callable with zero args when fn is () => Promise<T>", async () => {
+      const fn: () => Promise<string> = vi.fn().mockResolvedValue("pong");
+      const { result } = renderHook(() => useMutation(fn));
+
+      // This must compile WITHOUT casts — the return type should be () => Promise<string>
+      await act(async () => {
+        const value = await result.current[0]();
+        expect(value).toBe("pong");
+      });
+
+      expect(fn).toHaveBeenCalled();
+      expect(result.current[1].data).toBe("pong");
+    });
+
+    it("mutate() callable with zero args when fn is (input: void) => Promise<T>", async () => {
+      const fn: (input: void) => Promise<string> = vi.fn().mockResolvedValue("pong");
+      const { result } = renderHook(() => useMutation(fn));
 
       await act(async () => {
-        const value = await (result.current[0] as () => Promise<string>)();
+        const value = await result.current[0]();
         expect(value).toBe("pong");
       });
 

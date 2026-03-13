@@ -18,9 +18,7 @@ export interface UseMutationState<TOutput> {
 }
 
 export type UseMutationResult<TInput, TOutput> = [
-  TInput extends void
-    ? () => Promise<TOutput>
-    : (input: TInput) => Promise<TOutput>,
+  (...args: void extends TInput ? [input?: TInput] : [input: TInput]) => Promise<TOutput>,
   UseMutationState<TOutput>,
 ];
 

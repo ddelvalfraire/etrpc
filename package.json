@@ -16,12 +16,20 @@
       "import": "./dist/renderer/index.js"
     },
     "./preload": {
-      "types": "./dist/preload/index.d.ts",
+      "types": "./dist/preload/index.d.cts",
       "require": "./dist/preload/index.cjs"
     },
     "./react": {
       "types": "./dist/react/index.d.ts",
       "import": "./dist/react/index.js"
+    }
+  },
+  "typesVersions": {
+    "*": {
+      "main": ["dist/main/index.d.ts"],
+      "renderer": ["dist/renderer/index.d.ts"],
+      "preload": ["./dist/preload/index.d.cts"],
+      "react": ["dist/react/index.d.ts"]
     }
   },
   "files": [

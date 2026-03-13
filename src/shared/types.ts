@@ -153,7 +153,7 @@ export type QueryClient<T extends RouterDef> = {
     ? K
     : never]: T[K] extends QueryProcedure<infer TInput, infer TOutput>
     ? z.infer<TInput> extends void
-      ? () => Promise<TOutput>
+      ? (input: void) => Promise<TOutput>
       : (input: z.infer<TInput>) => Promise<TOutput>
     : never;
 };
@@ -164,7 +164,7 @@ export type MutationClient<T extends RouterDef> = {
     ? K
     : never]: T[K] extends MutationProcedure<infer TInput, infer TOutput>
     ? z.infer<TInput> extends void
-      ? () => Promise<TOutput>
+      ? (input: void) => Promise<TOutput>
       : (input: z.infer<TInput>) => Promise<TOutput>
     : never;
 };
