@@ -467,7 +467,6 @@ describe("Integration: full round-trip", () => {
       await new Promise((r) => setTimeout(r, 20));
 
       // Cleanup the server
-      server.cleanup;
       serverCleanup();
 
       // IPC handlers should be removed — invoke should throw

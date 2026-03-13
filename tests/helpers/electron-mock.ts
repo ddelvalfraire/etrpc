@@ -57,8 +57,12 @@ export class MockWebContents extends EventEmitter {
 // MockIpcMain
 // =============================================================================
 
-type HandleFn = (event: any, ...args: unknown[]) => Promise<unknown> | unknown;
-type OnFn = (event: any, ...args: unknown[]) => void;
+interface MockIpcEvent {
+  sender: MockWebContents;
+}
+
+type HandleFn = (event: MockIpcEvent, ...args: unknown[]) => Promise<unknown> | unknown;
+type OnFn = (event: MockIpcEvent, ...args: unknown[]) => void;
 
 export class MockIpcMain extends EventEmitter {
   private _handlers = new Map<string, HandleFn>();
@@ -77,7 +81,7 @@ export class MockIpcMain extends EventEmitter {
   /** Called by MockIpcRenderer.invoke() */
   async __invokeHandler__(
     channel: string,
-    event: any,
+    event: MockIpcEvent,
     ...args: unknown[]
   ): Promise<unknown> {
     const handler = this._handlers.get(channel);
@@ -129,7 +133,7 @@ export class MockIpcRenderer extends EventEmitter {
     this._ipcMain.emit(channel, event, ...args);
   }
 
-  removeListener(event: string, listener: (...args: any[]) => void): this {
+  removeListener(event: string, listener: (...args: unknown[]) => void): this {
     return super.removeListener(event, listener);
   }
 }
@@ -144,7 +148,7 @@ export class MockContextBridge {
   exposeInMainWorld(apiKey: string, api: unknown): void {
     this._exposed.set(apiKey, api);
     // Simulate what contextBridge does: make it available on globalThis
-    (globalThis as any)[apiKey] = api;
+    (globalThis as Record<string, unknown>)[apiKey] = api;
   }
 
   getExposed(apiKey: string): unknown {

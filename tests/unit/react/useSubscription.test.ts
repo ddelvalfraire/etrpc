@@ -8,12 +8,12 @@ import type { SubscriptionOptions, UnsubscribeFn } from "#src/shared/types";
 // Helper: creates a mock subscription function with controls for emitting
 // ---------------------------------------------------------------------------
 function createMockSubscription() {
-  let onData: ((data: any) => void) | null = null;
+  let onData: ((data: unknown) => void) | null = null;
   let onError: ((error: Error) => void) | null = null;
   const unsubscribe = vi.fn();
 
-  const fn = vi.fn((inputOrOptions: any, maybeOptions?: any) => {
-    const options = maybeOptions || inputOrOptions;
+  const fn = vi.fn((inputOrOptions: unknown, maybeOptions?: unknown) => {
+    const options = (maybeOptions || inputOrOptions) as SubscriptionOptions<unknown>;
     onData = options.onData;
     onError = options.onError;
     return unsubscribe;
@@ -22,7 +22,7 @@ function createMockSubscription() {
   return {
     fn,
     unsubscribe,
-    emitData: (data: any) => onData?.(data),
+    emitData: (data: unknown) => onData?.(data),
     emitError: (error: Error) => onError?.(error),
   };
 }
@@ -135,7 +135,7 @@ describe("useSubscription", () => {
 
     it("multiple emissions update data each time", () => {
       const mock = createMockSubscription();
-      const values: any[] = [];
+      const values: unknown[] = [];
 
       const { result } = renderHook(() => useSubscription(mock.fn));
 
@@ -362,9 +362,9 @@ describe("useSubscription", () => {
       // We need individual mocks per subscription so we can emit on the old one
       let subscriptionIndex = 0;
       const unsubscribes = [vi.fn(), vi.fn()];
-      const emitters: { onData: ((d: any) => void) | null }[] = [];
+      const emitters: { onData: ((d: unknown) => void) | null }[] = [];
 
-      const fn = vi.fn((input: any, options: any) => {
+      const fn = vi.fn((input: unknown, options: SubscriptionOptions<unknown>) => {
         const idx = subscriptionIndex++;
         emitters[idx] = { onData: options.onData };
         return unsubscribes[idx]!;
