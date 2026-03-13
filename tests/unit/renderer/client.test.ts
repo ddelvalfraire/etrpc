@@ -50,6 +50,17 @@ function createMockBridge(): PreloadBridge & {
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+type RpcFn = (input?: unknown) => Promise<unknown>;
+/** Call a proxy method by name, bypassing noUncheckedIndexedAccess. */
+function call(obj: unknown, method: string, ...args: unknown[]): Promise<unknown> {
+  return (obj as Record<string, RpcFn>)[method]!(...args);
+}
+
+/** Call a subscription proxy method by name, bypassing noUncheckedIndexedAccess. */
+function callSub<R = unknown>(obj: unknown, method: string, ...args: unknown[]): R {
+  return (obj as Record<string, (...a: unknown[]) => R>)[method]!(...args);
+}
+
 let mockBridge: ReturnType<typeof createMockBridge>;
 
 beforeEach(() => {
@@ -65,7 +76,7 @@ describe("queries", () => {
     mockBridge.invoke = vi.fn().mockResolvedValue("Hello World");
     const api = createClient<TestRouter>();
 
-    const result = await (api.queries as Record<string, (input?: unknown) => Promise<unknown>>).greet("World");
+    const result = await call(api.queries, "greet", "World");
 
     expect(mockBridge.invoke).toHaveBeenCalledWith({
       type: "query",
@@ -79,7 +90,7 @@ describe("queries", () => {
     mockBridge.invoke = vi.fn().mockResolvedValue("OK");
     const api = createClient<TestRouter>();
 
-    const result = await (api.queries as Record<string, (input?: unknown) => Promise<unknown>>).getStatus();
+    const result = await call(api.queries, "getStatus");
 
     expect(mockBridge.invoke).toHaveBeenCalledWith({
       type: "query",
@@ -94,7 +105,7 @@ describe("queries", () => {
     mockBridge.invoke = vi.fn().mockResolvedValue(expectedData);
     const api = createClient<TestRouter>();
 
-    const result = await (api.queries as Record<string, (input?: unknown) => Promise<unknown>>).greet("test");
+    const result = await call(api.queries, "greet", "test");
     expect(result).toEqual(expectedData);
   });
 
@@ -108,7 +119,7 @@ describe("queries", () => {
     const api = createClient<TestRouter>();
 
     try {
-      await (api.queries as Record<string, (input?: unknown) => Promise<unknown>>).greet("bad");
+      await call(api.queries, "greet", "bad");
       expect.fail("Should have thrown");
     } catch (err) {
       expect(err).toBeInstanceOf(RpcError);
@@ -125,7 +136,7 @@ describe("queries", () => {
     const api = createClient<TestRouter>();
 
     await expect(
-      (api.queries as Record<string, (input?: unknown) => Promise<unknown>>).greet("x"),
+      call(api.queries, "greet", "x"),
     ).rejects.toThrow("Network failure");
   });
 
@@ -139,8 +150,8 @@ describe("queries", () => {
     });
     const api = createClient<TestRouter>();
 
-    const p1 = (api.queries as Record<string, (input?: unknown) => Promise<unknown>>).greet("a");
-    const p2 = (api.queries as Record<string, (input?: unknown) => Promise<unknown>>).greet("b");
+    const p1 = call(api.queries, "greet", "a");
+    const p2 = call(api.queries, "greet", "b");
 
     const [r1, r2] = await Promise.all([p1, p2]);
     expect(r1).toBe("result-a");
@@ -156,7 +167,7 @@ describe("mutations", () => {
     mockBridge.invoke = vi.fn().mockResolvedValue(true);
     const api = createClient<TestRouter>();
 
-    const result = await (api.mutations as Record<string, (input?: unknown) => Promise<unknown>>).save({ name: "test" });
+    const result = await call(api.mutations, "save", { name: "test" });
 
     expect(mockBridge.invoke).toHaveBeenCalledWith({
       type: "mutation",
@@ -170,7 +181,7 @@ describe("mutations", () => {
     mockBridge.invoke = vi.fn().mockResolvedValue(undefined);
     const api = createClient<TestRouter>();
 
-    await (api.mutations as Record<string, (input?: unknown) => Promise<unknown>>).reset();
+    await call(api.mutations, "reset");
 
     expect(mockBridge.invoke).toHaveBeenCalledWith({
       type: "mutation",
@@ -188,7 +199,7 @@ describe("mutations", () => {
     const api = createClient<TestRouter>();
 
     try {
-      await (api.mutations as Record<string, (input?: unknown) => Promise<unknown>>).save({ name: "x" });
+      await call(api.mutations, "save", { name: "x" });
       expect.fail("Should have thrown");
     } catch (err) {
       expect(err).toBeInstanceOf(RpcError);
@@ -208,7 +219,7 @@ describe("subscriptions", () => {
     const onData = vi.fn();
     const onError = vi.fn();
 
-    (api.subscriptions as Record<string, (...args: unknown[]) => unknown>).onTick({ onData, onError });
+    callSub(api.subscriptions, "onTick", { onData, onError });
 
     expect(mockBridge.subscribe).toHaveBeenCalledTimes(1);
     const payload = (mockBridge.subscribe as ReturnType<typeof vi.fn>).mock.calls[0]![0];
@@ -224,7 +235,7 @@ describe("subscriptions", () => {
     const onData = vi.fn();
     const onError = vi.fn();
 
-    (api.subscriptions as Record<string, (...args: unknown[]) => unknown>).onEvent("filter", {
+    callSub(api.subscriptions, "onEvent", "filter", {
       onData,
       onError,
     });
@@ -240,11 +251,11 @@ describe("subscriptions", () => {
   it("generates unique subscription IDs per call", () => {
     const api = createClient<TestRouter>();
 
-    (api.subscriptions as Record<string, (...args: unknown[]) => unknown>).onTick({
+    callSub(api.subscriptions, "onTick", {
       onData: vi.fn(),
       onError: vi.fn(),
     });
-    (api.subscriptions as Record<string, (...args: unknown[]) => unknown>).onTick({
+    callSub(api.subscriptions, "onTick", {
       onData: vi.fn(),
       onError: vi.fn(),
     });
@@ -257,7 +268,7 @@ describe("subscriptions", () => {
   it("returns an UnsubscribeFn that calls bridge.unsubscribe with correct ID", () => {
     const api = createClient<TestRouter>();
 
-    const unsub = (api.subscriptions as Record<string, (...args: unknown[]) => () => void>).onTick({
+    const unsub = callSub<() => void>(api.subscriptions, "onTick", {
       onData: vi.fn(),
       onError: vi.fn(),
     });
@@ -276,7 +287,7 @@ describe("subscriptions", () => {
     const api = createClient<TestRouter>();
     const onData = vi.fn();
 
-    const unsub = (api.subscriptions as Record<string, (...args: unknown[]) => () => void>).onTick({
+    const unsub = callSub<() => void>(api.subscriptions, "onTick", {
       onData,
       onError: vi.fn(),
     });
@@ -293,7 +304,7 @@ describe("subscriptions", () => {
     const api = createClient<TestRouter>();
     const onData = vi.fn();
 
-    (api.subscriptions as Record<string, (...args: unknown[]) => unknown>).onTick({
+    callSub(api.subscriptions, "onTick", {
       onData,
       onError: vi.fn(),
     });
@@ -308,7 +319,7 @@ describe("subscriptions", () => {
     const api = createClient<TestRouter>();
     const onError = vi.fn();
 
-    (api.subscriptions as Record<string, (...args: unknown[]) => unknown>).onTick({
+    callSub(api.subscriptions, "onTick", {
       onData: vi.fn(),
       onError,
     });
@@ -337,11 +348,11 @@ describe("subscriptions", () => {
     const onDataTick = vi.fn();
     const onDataEvent = vi.fn();
 
-    (api.subscriptions as Record<string, (...args: unknown[]) => unknown>).onTick({
+    callSub(api.subscriptions, "onTick", {
       onData: onDataTick,
       onError: vi.fn(),
     });
-    (api.subscriptions as Record<string, (...args: unknown[]) => unknown>).onEvent("filter", {
+    callSub(api.subscriptions, "onEvent", "filter", {
       onData: onDataEvent,
       onError: vi.fn(),
     });
@@ -367,11 +378,11 @@ describe("subscriptions", () => {
     const onData1 = vi.fn();
     const onData2 = vi.fn();
 
-    (api.subscriptions as Record<string, (...args: unknown[]) => unknown>).onTick({
+    callSub(api.subscriptions, "onTick", {
       onData: onData1,
       onError: vi.fn(),
     });
-    (api.subscriptions as Record<string, (...args: unknown[]) => unknown>).onTick({
+    callSub(api.subscriptions, "onTick", {
       onData: onData2,
       onError: vi.fn(),
     });
@@ -392,7 +403,7 @@ describe("subscriptions", () => {
   it("silently ignores messages for unknown subscription IDs", () => {
     const api = createClient<TestRouter>();
     // Create at least one subscription so the listener is registered
-    (api.subscriptions as Record<string, (...args: unknown[]) => unknown>).onTick({
+    callSub(api.subscriptions, "onTick", {
       onData: vi.fn(),
       onError: vi.fn(),
     });
@@ -423,7 +434,7 @@ describe("subscriptions", () => {
     const onData = vi.fn();
     const onError = vi.fn();
 
-    const unsub = (api.subscriptions as Record<string, (...args: unknown[]) => () => void>).onTick({
+    const unsub = callSub<() => void>(api.subscriptions, "onTick", {
       onData,
       onError,
     });
@@ -460,8 +471,8 @@ describe("edge cases", () => {
     const api1 = createClient<TestRouter>();
     const api2 = createClient<TestRouter>();
 
-    const r1 = await (api1.queries as Record<string, (input?: unknown) => Promise<unknown>>).greet("a");
-    const r2 = await (api2.queries as Record<string, (input?: unknown) => Promise<unknown>>).greet("b");
+    const r1 = await call(api1.queries, "greet", "a");
+    const r2 = await call(api2.queries, "greet", "b");
 
     expect(r1).toBe("from-bridge");
     expect(r2).toBe("from-bridge");
@@ -483,7 +494,7 @@ describe("edge cases", () => {
     expect(mockBridge.onSubscriptionMessage).not.toHaveBeenCalled();
 
     // After first subscription, it should be called
-    (api.subscriptions as Record<string, (...args: unknown[]) => unknown>).onTick({
+    callSub(api.subscriptions, "onTick", {
       onData: vi.fn(),
       onError: vi.fn(),
     });
@@ -491,7 +502,7 @@ describe("edge cases", () => {
     expect(mockBridge.onSubscriptionMessage).toHaveBeenCalledTimes(1);
 
     // Second subscription should NOT register another listener
-    (api.subscriptions as Record<string, (...args: unknown[]) => unknown>).onTick({
+    callSub(api.subscriptions, "onTick", {
       onData: vi.fn(),
       onError: vi.fn(),
     });
@@ -506,7 +517,7 @@ describe("edge cases", () => {
 
     const api = createClient<TestRouter>({ bridgeKey: "__myCustomBridge" });
 
-    const result = await (api.queries as Record<string, (input?: unknown) => Promise<unknown>>).greet("x");
+    const result = await call(api.queries, "greet", "x");
     expect(result).toBe("custom");
     expect(customBridge.invoke).toHaveBeenCalled();
 
@@ -531,7 +542,7 @@ describe("edge cases", () => {
 
     // Subscribe and immediately unsubscribe 50 times
     for (let i = 0; i < 50; i++) {
-      const unsub = (api.subscriptions as Record<string, (...args: unknown[]) => () => void>).onTick({
+      const unsub = callSub<() => void>(api.subscriptions, "onTick", {
         onData: vi.fn(),
         onError: vi.fn(),
       });
@@ -539,7 +550,7 @@ describe("edge cases", () => {
     }
 
     // After all unsubscribes, no callbacks should be triggered
-    const lateSub = (api.subscriptions as Record<string, (...args: unknown[]) => () => void>).onTick({
+    const lateSub = callSub<() => void>(api.subscriptions, "onTick", {
       onData: vi.fn(),
       onError: vi.fn(),
     });
@@ -563,7 +574,7 @@ describe("edge cases", () => {
     const api = createClient<TestRouter>();
 
     try {
-      await (api.queries as Record<string, (input?: unknown) => Promise<unknown>>).greet("x");
+      await call(api.queries, "greet", "x");
       expect.fail("Should have thrown");
     } catch (err) {
       // Primitive values without code/message should be re-thrown as-is
@@ -576,7 +587,7 @@ describe("edge cases", () => {
     const api = createClient<TestRouter>();
 
     try {
-      await (api.queries as Record<string, (input?: unknown) => Promise<unknown>>).greet("x");
+      await call(api.queries, "greet", "x");
       expect.fail("Should have thrown");
     } catch (err) {
       expect(err).toBeNull();

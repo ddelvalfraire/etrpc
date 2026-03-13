@@ -381,14 +381,14 @@ describe("useSubscription", () => {
 
       // Emit on old subscription (index 0) -- should be ignored
       act(() => {
-        emitters[0]!.onData("stale-from-old-sub");
+        emitters[0]!.onData!("stale-from-old-sub");
       });
 
       expect(result.current.data).toBeUndefined();
 
       // Emit on new subscription (index 1) -- should work
       act(() => {
-        emitters[1]!.onData("fresh-from-new-sub");
+        emitters[1]!.onData!("fresh-from-new-sub");
       });
 
       expect(result.current.data).toBe("fresh-from-new-sub");

@@ -26,7 +26,6 @@ import type {
   IpcClient,
   FlattenRouter,
   RouterDef,
-  AnyProcedure,
 } from "#src/shared/types";
 
 // =============================================================================
@@ -158,9 +157,9 @@ const _fileUnsub = sc.onFileChange(
   },
 );
 
-// @ts-expect-error - wrong input type for subscription
 const _fileUnsubBad = sc.onFileChange(
-  { wrongField: true },
+  // @ts-expect-error - number is not a valid subscription input
+  42,
   { onData: () => {}, onError: () => {} },
 );
 
@@ -237,7 +236,7 @@ const _nextResult: Promise<unknown> = _nextFn();
 // --- Extended context middleware ---
 
 // Middleware with extra context properties
-interface WithUser { userId: string; role: "admin" | "user" }
+type WithUser = { userId: string; role: "admin" | "user" };
 
 const _authMiddleware: Middleware<WithUser> = async (ctx, next) => {
   // Extended properties are accessible alongside base properties

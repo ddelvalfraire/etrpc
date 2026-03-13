@@ -195,7 +195,7 @@ describe("defineMiddleware", () => {
 
 describe("Middleware generic context extension", () => {
   it("extended middleware receives additional context properties at runtime", async () => {
-    interface WithAuth { userId: string; role: string }
+    type WithAuth = { userId: string; role: string };
 
     // This middleware expects the extended context
     const authGuard: Middleware<WithAuth> = async (ctx, next) => {
@@ -223,7 +223,7 @@ describe("Middleware generic context extension", () => {
   });
 
   it("extended middleware rejects when role check fails", async () => {
-    interface WithAuth { userId: string; role: string }
+    type WithAuth = { userId: string; role: string };
 
     const authGuard: Middleware<WithAuth> = async (ctx, _next) => {
       if (ctx.role !== "admin") {

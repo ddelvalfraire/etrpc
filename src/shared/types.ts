@@ -101,8 +101,10 @@ export type SubscriptionHandler<TInput, TOutput> = (
 /** A router is a record of string keys to procedures. */
 export type RouterDef = Record<string, AnyProcedure>;
 
-/** A nested router supports grouping procedures by domain. */
-export type NestedRouterDef = Record<string, AnyProcedure | RouterDef>;
+/** A nested router supports grouping procedures by domain (arbitrarily deep). */
+export interface NestedRouterDef {
+  [key: string]: AnyProcedure | NestedRouterDef;
+}
 
 /** Convert a union to an intersection via distributive conditional types. */
 type UnionToIntersection<U> = (
@@ -118,7 +120,7 @@ type UnionToIntersection<U> = (
 type FlatEntries<T extends NestedRouterDef, Prefix extends string = ""> = {
   [K in keyof T & string]: T[K] extends AnyProcedure
     ? Record<`${Prefix}${K}`, T[K]>
-    : T[K] extends RouterDef
+    : T[K] extends NestedRouterDef
       ? FlatEntries<T[K], `${Prefix}${K}.`>
       : never;
 }[keyof T & string];
