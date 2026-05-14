@@ -20,7 +20,7 @@ export default defineConfig([
   {
     entry: { index: "src/preload/index.ts" },
     outDir: "dist/preload",
-    format: ["cjs"],
+    format: ["cjs", "esm"],
     dts: true,
     clean: true,
     external: ["electron"],

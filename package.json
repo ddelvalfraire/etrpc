@@ -17,6 +17,7 @@
     },
     "./preload": {
       "types": "./dist/preload/index.d.cts",
+      "import": "./dist/preload/index.js",
       "require": "./dist/preload/index.cjs"
     },
     "./react": {
